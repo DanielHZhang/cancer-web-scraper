@@ -1,0 +1,20 @@
+{
+	"name": "ronald_webscrape",
+	"version": "1.0.0",
+	"description": "",
+	"type": "module",
+	"main": "main.ts",
+	"scripts": {
+		"start": "tsx main.ts"
+	},
+	"keywords": [],
+	"author": "",
+	"devDependencies": {
+		"@playwright/test": "^1.48.2",
+		"@types/node": "^22.9.0",
+		"csv-stringify": "^6.5.1",
+		"prettier": "^3.3.3",
+		"tsx": "^4.19.2",
+		"typescript": "^5.6.3"
+	}
+}

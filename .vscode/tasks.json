@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run webscraper",
+			"type": "shell",
+			"command": "pnpm exec playwright test --ui",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "always"
+			}
+		}
+	]
+}
