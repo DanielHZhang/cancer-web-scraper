@@ -4,31 +4,7 @@ import dayjs from "dayjs";
 import fs from "node:fs/promises";
 import path from "path";
 import { StudyStatus, type GetStudiesResponse } from "./clinical-trials";
-
-type CancerData = {
-	type: string;
-	url: string;
-	drugs: Drug[];
-};
-type Drug = {
-	name: string;
-	brandName: string;
-	genericName: string; // Name but without the () if there is an alternative name
-	description: string;
-	fdaApproved: boolean;
-	earliestFdaApprovalDate?: dayjs.Dayjs;
-	cancerType: string;
-	urls: {
-		cancerGov: string;
-		dailyMedUrl?: string;
-	};
-	clinicalStudies: {
-		totalN: number;
-		totalCompletedN: number;
-		totalCount: number;
-		previewText?: string;
-	};
-};
+import type { CancerData, Drug } from "./types";
 
 const cancerType: string | null = "Breast Cancer";
 const drugLimit: number = 5;
