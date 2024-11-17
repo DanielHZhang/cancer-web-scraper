@@ -246,12 +246,6 @@ for (const drug of drugs) {
 			const drugApprovalOriginTable = await page.locator("#exampleApplOrig").count();
 			const isOnSearchPage = drugApprovalOriginTable === 0;
 
-			// const searchTitleCount = await page.locator("h4", { hasText: "Search Results for" }).count();
-			console.log("should go directly to drug page:", isOnSearchPage, drugApprovalOriginTable);
-			console.log(page.url());
-
-			// `event=overview.process&ApplNo=`
-
 			// FDA search took us to the results page, process the table
 			if (isOnSearchPage) {
 				const tableMatches = await page.locator(".table").locator("ul").locator("li").locator("a").all();
