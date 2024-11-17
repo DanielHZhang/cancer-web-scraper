@@ -3,6 +3,7 @@ import { stringify } from "csv-stringify/sync";
 import dayjs from "dayjs";
 import fs from "node:fs/promises";
 import path from "path";
+import { StudyStatus, type GetStudiesResponse } from "./clinical-trials";
 
 type CancerData = {
 	type: string;
@@ -11,7 +12,8 @@ type CancerData = {
 };
 type Drug = {
 	name: string;
-	shortName: string; // Name but without the () if there is an alternative name
+	brandName: string;
+	genericName: string; // Name but without the () if there is an alternative name
 	description: string;
 	fdaApproved: boolean;
 	earliestFdaApprovalDate?: dayjs.Dayjs;
@@ -21,14 +23,20 @@ type Drug = {
 		dailyMedUrl?: string;
 	};
 	clinicalStudies: {
+		totalN: number;
+		totalCompletedN: number;
+		totalCount: number;
 		previewText?: string;
 	};
 };
 
-const limit = 2;
-const baseUrls = {
+const cancerType: string | null = "Breast Cancer";
+const drugLimit: number = 5;
+export const baseUrls = {
 	cancerGov: "https://www.cancer.gov",
 	dailyMed: "https://dailymed.nlm.nih.gov",
+	clinicalTrialsGov: "https://clinicaltrials.gov/api/v2/studies",
+	fdaDatabase: "https://www.accessdata.fda.gov",
 };
 
 const browser = await chromium.launch({ headless: false });
@@ -51,7 +59,7 @@ const scraped = await Promise.all(
 	}),
 );
 
-const data = scraped.map(({ name, href }): CancerData => {
+let data = scraped.map(({ name, href }): CancerData => {
 	return {
 		type: name,
 		url: href.startsWith(baseUrls.cancerGov) ? href : `${baseUrls.cancerGov}${href}`,
@@ -60,9 +68,13 @@ const data = scraped.map(({ name, href }): CancerData => {
 });
 console.log(`Scraped ${data.length} cancer types.`);
 
+// Limit cancer to specific type if specified
+if (cancerType) {
+	data = data.filter((c) => c.type === cancerType);
+}
+
 // Scrape drug names for each cancer type
-const dataIncluded = limit > 0 ? data.slice(0, limit) : data;
-for await (const cancer of dataIncluded) {
+for await (const cancer of data) {
 	await page.goto(cancer.url, { waitUntil: "networkidle" });
 
 	const body = page.locator("#cgvBody");
@@ -77,18 +89,29 @@ for await (const cancer of dataIncluded) {
 
 			const scraped = await Promise.all(
 				liElements.map(async (li): Promise<Drug | undefined> => {
-					const anchor = li.locator("a");
-					const [href, name] = await Promise.all([anchor.getAttribute("href"), anchor.innerText()]);
+					const anchor = li.locator("a").first();
+					let [href, name] = await Promise.all([anchor.getAttribute("href"), anchor.innerText()]);
 					if (href && !uniqueHrefs.has(href)) {
 						uniqueHrefs.add(href); // Prevent duplicates from being included (same drug but different brand name)
+						name = name.split("\n")[0]; // Some names may be split into multiple lines
+						const genericName = name
+							.match(/\(.+\)/)?.[0]
+							.slice(1, -1) // Do not include the parantheses in the result
+							.trim();
+						const brandName = name.replace(/\(.*\)/, "").trim();
 						return {
 							name,
-							shortName: name.replace(/\(.*\)/g, "").trim(),
+							brandName,
+							genericName: genericName || name,
 							description: "",
 							cancerType: cancer.type,
 							fdaApproved: false,
 							urls: { cancerGov: href.startsWith(baseUrls.cancerGov) ? href : `${baseUrls.cancerGov}${href}` },
-							clinicalStudies: {},
+							clinicalStudies: {
+								totalN: -1,
+								totalCompletedN: -1,
+								totalCount: -1,
+							},
 						};
 					}
 				}),
@@ -100,15 +123,16 @@ for await (const cancer of dataIncluded) {
 	);
 }
 
-// Scrape drug details
-const allDrugs: Drug[] = [];
-if (limit >= 0) {
-	for (let i = 0; i < dataIncluded.length; i += 1) {
-		if (i >= limit) break;
-		allDrugs.push(...data[i].drugs);
-	}
+// Limit maximum number of drugs included per cancer if specified
+const drugs: Drug[] = [];
+if (drugLimit > 0) {
+	data.forEach((cancer) => {
+		drugs.push(...cancer.drugs.slice(0, drugLimit));
+	});
 }
-for await (const drug of allDrugs) {
+
+// Scrape drug details
+for (const drug of drugs) {
 	await page.goto(drug.urls.cancerGov, { waitUntil: "networkidle" });
 
 	const body = page.locator("#cgvBody");
@@ -169,32 +193,11 @@ for await (const drug of allDrugs) {
 
 	// Search for drug on FDA database to find approval date
 	if (drug.fdaApproved) {
-		const fdaSearchUrl = "https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm";
-		await page.goto(fdaSearchUrl, { waitUntil: "networkidle" });
-		const form = page.locator("#DrugNameform");
-		const input = form.locator("input", { has: form.locator(".form-control") });
-		await input.fill(drug.name);
-		const submitButton = form.locator("button", { hasText: "Search" });
-		await submitButton.click();
-
-		await page.waitForEvent("domcontentloaded");
-
-		const resultsTable = page.locator(".table").first();
-		const nameMatchAnchor = resultsTable.locator("a", { hasText: drug.shortName });
-		const matchList = await nameMatchAnchor.locator("..").locator("ul").locator("li").all();
-
-		// Go to each FDA drug result page and find the earliest approval
 		const now = dayjs();
 		let earliestApprovalDate = now;
-		for (const match of matchList) {
-			const fdaDrugUrl = await match.locator("a").getAttribute("href");
-			if (!fdaDrugUrl) {
-				continue;
-			}
-			await page.goto(fdaDrugUrl, { waitUntil: "networkidle" });
+		const findApprovalDate = async () => {
 			const originApprovalTable = page.locator("#exampleApplOrig");
 			const tableRows = await originApprovalTable.locator("tbody").locator("tr").all();
-
 			const actionDateCol = 0;
 			const actionTypeCol = 2;
 			await Promise.all(
@@ -220,32 +223,149 @@ for await (const drug of allDrugs) {
 					}
 				}),
 			);
+		};
+
+		const fdaSearchUrl = `${baseUrls.fdaDatabase}/scripts/cder/daf/index.cfm`;
+		const searchFdaForDrug = async (drugName: string) => {
+			await page.goto(fdaSearchUrl, { waitUntil: "networkidle" });
+			const form = page.locator("#DrugNameform");
+			const input = form.locator("input");
+			await input.fill(drugName);
+			const submitButton = form.locator("button", { hasText: "Search" });
+			await submitButton.click();
+
+			// Go to each FDA drug result page and find the earliest approval
+			await page.waitForLoadState("networkidle");
+
+			// No results for the drug
+			const hasNoResults = await page.locator("h4", { hasText: "Search Did Not Return Any Results" }).count();
+			if (hasNoResults > 0) {
+				return false;
+			}
+
+			const drugApprovalOriginTable = await page.locator("#exampleApplOrig").count();
+			const isOnSearchPage = drugApprovalOriginTable === 0;
+
+			// const searchTitleCount = await page.locator("h4", { hasText: "Search Results for" }).count();
+			console.log("should go directly to drug page:", isOnSearchPage, drugApprovalOriginTable);
+			console.log(page.url());
+
+			// `event=overview.process&ApplNo=`
+
+			// FDA search took us to the results page, process the table
+			if (isOnSearchPage) {
+				const tableMatches = await page.locator(".table").locator("ul").locator("li").locator("a").all();
+				for (const anchor of tableMatches) {
+					const fdaDrugUrl = await anchor.getAttribute("href");
+					if (!fdaDrugUrl) {
+						continue;
+					}
+					const name = (await anchor.innerText()).toLowerCase();
+					if (!name.includes(drug.genericName.toLowerCase()) && !name.includes(drug.brandName.toLowerCase())) {
+						continue; // Skip results that do not contain the drug's name at all
+					}
+					const url = fdaDrugUrl.startsWith(baseUrls.fdaDatabase) ? fdaDrugUrl : `${baseUrls.fdaDatabase}${fdaDrugUrl}`;
+					await page.goto(url, { waitUntil: "networkidle" });
+					await findApprovalDate();
+					await page.goBack();
+				}
+			}
+			// FDA search took us directly to the drug details page, we can skip processing the results table
+			else {
+				await findApprovalDate();
+			}
+			if (earliestApprovalDate !== now) {
+				drug.earliestFdaApprovalDate = earliestApprovalDate;
+			}
+			return true;
+		};
+
+		const done = await searchFdaForDrug(drug.genericName);
+		if (!done) {
+			await searchFdaForDrug(drug.brandName); // Search brand name is generic name doesn't return any results
 		}
-		if (earliestApprovalDate !== now) {
-			drug.earliestFdaApprovalDate = earliestApprovalDate;
+	}
+
+	// Query clinicaltrials.gov for the number of trials with the drug
+	let nextPageToken: string | symbol | undefined = Symbol();
+	while (nextPageToken) {
+		try {
+			const query = new URLSearchParams({
+				format: "json",
+				"query.intr": drug.genericName,
+				aggFilters: "studyType:int",
+				fields: "ProtocolSection",
+				countTotal: "true",
+				pageSize: "50",
+			});
+			if (typeof nextPageToken === "string") {
+				query.append("pageToken", nextPageToken);
+			}
+			const response = await fetch(`${baseUrls.clinicalTrialsGov}?${query.toString()}`, {
+				headers: { Accept: "application/json" },
+			});
+			if (!response.ok) {
+				throw new Error(`clinicaltrials.gov API request failed: ${response.status} ${response.statusText}`);
+			}
+			const data: GetStudiesResponse = await response.json();
+			if (typeof data.totalCount === "number") {
+				drug.clinicalStudies.totalCount = data.totalCount;
+			}
+			let totalN = 0;
+			let totalCompletedN = 0;
+			for (const study of data.studies) {
+				const { designModule, statusModule } = study.protocolSection;
+				const { designInfo, enrollmentInfo } = designModule;
+				if (designInfo.allocation !== "RANDOMIZED") {
+					continue;
+				}
+				if (statusModule.overallStatus === StudyStatus.COMPLETED) {
+					totalCompletedN += enrollmentInfo.count;
+				}
+				totalN += enrollmentInfo.count;
+			}
+			drug.clinicalStudies.totalN = totalN;
+			drug.clinicalStudies.totalCompletedN = totalCompletedN;
+			nextPageToken = data.nextPageToken;
+		} catch (error) {
+			console.error(error);
+			break;
 		}
-		// console.warn(drug.name, "no drug details url found in FDA search");
 	}
 
 	console.log("Finished:", drug);
 }
 
 // Write results to CSV
-const csvRows = [["drug_name", "cancer_type", "fda_approved", "clinical_studies"]];
+const csvRows = [
+	[
+		"drug_generic_name",
+		"drug_brand_name",
+		"cancer_type",
+		"fda_approved",
+		"fda_approval_date",
+		"rct_count",
+		"rct_total_n",
+		"rct_total_completed_n",
+	],
+];
 data.forEach((cancer) => {
-	cancer.drugs.forEach((drug) => {
-		const row = [
-			drug.name,
-			//
+	const drugs = drugLimit > 0 ? cancer.drugs.slice(0, drugLimit) : cancer.drugs;
+	drugs.forEach((drug) => {
+		csvRows.push([
+			drug.genericName,
+			drug.brandName,
 			cancer.type,
 			drug.fdaApproved ? "yes" : "no",
-			drug.clinicalStudies.previewText || "",
-		];
-		csvRows.push(row);
+			drug.earliestFdaApprovalDate?.format("YYYY-MM-DD") || "unknown",
+			drug.clinicalStudies.totalCount >= 0 ? drug.clinicalStudies.totalCount.toString() : "unknown",
+			drug.clinicalStudies.totalN >= 0 ? drug.clinicalStudies.totalN.toString() : "unknown",
+			drug.clinicalStudies.totalCompletedN >= 0 ? drug.clinicalStudies.totalCompletedN.toString() : "unknown",
+		]);
 	});
 });
 const csvOutput = stringify(csvRows);
-const fileName = path.join(process.cwd(), `output-${Date.now()}.csv`);
+const fileName = path.join(process.cwd(), "outputs", `output-${Date.now()}.csv`);
 await fs.writeFile(fileName, csvOutput, { flag: "w+" });
 
 console.log("Done.");
