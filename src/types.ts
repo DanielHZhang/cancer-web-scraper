@@ -20,8 +20,9 @@ export type Drug = {
 	};
 	clinicalStudies: {
 		totalN: number;
-		totalCompletedN: number;
+		completedN: number;
 		totalCount: number;
+		completedCount: number;
 		previewText?: string;
 	};
 };

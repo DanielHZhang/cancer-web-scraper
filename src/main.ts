@@ -7,7 +7,7 @@ import { StudyStatus, type GetStudiesResponse } from "./clinical-trials";
 import type { CancerData, Drug } from "./types";
 
 const cancerType: string | null = "Breast Cancer";
-const drugLimit: number = 5;
+const drugLimit: number = -1;
 export const baseUrls = {
 	cancerGov: "https://www.cancer.gov",
 	dailyMed: "https://dailymed.nlm.nih.gov",
@@ -42,12 +42,17 @@ let data = scraped.map(({ name, href }): CancerData => {
 		drugs: [],
 	};
 });
-console.log(`Scraped ${data.length} cancer types.`);
-
-// Limit cancer to specific type if specified
 if (cancerType) {
+	// Limit cancer to specific type if specified
 	data = data.filter((c) => c.type === cancerType);
 }
+console.log(`Scraped ${data.length} cancer types.`);
+
+const errorHandler = () => {
+	// TODO: write gpt results to disk
+};
+process.on("uncaughtException", errorHandler);
+process.on("unhandledRejection", errorHandler);
 
 // Scrape drug names for each cancer type
 for await (const cancer of data) {
@@ -85,8 +90,9 @@ for await (const cancer of data) {
 							urls: { cancerGov: href.startsWith(baseUrls.cancerGov) ? href : `${baseUrls.cancerGov}${href}` },
 							clinicalStudies: {
 								totalN: -1,
-								totalCompletedN: -1,
+								completedN: -1,
 								totalCount: -1,
+								completedCount: -1,
 							},
 						};
 					}
@@ -105,6 +111,8 @@ if (drugLimit > 0) {
 	data.forEach((cancer) => {
 		drugs.push(...cancer.drugs.slice(0, drugLimit));
 	});
+} else {
+	data.forEach((cancer) => drugs.push(...cancer.drugs));
 }
 
 // Scrape drug details
@@ -282,7 +290,8 @@ for (const drug of drugs) {
 				drug.clinicalStudies.totalCount = data.totalCount;
 			}
 			let totalN = 0;
-			let totalCompletedN = 0;
+			let completedN = 0;
+			let completedCount = 0;
 			for (const study of data.studies) {
 				const { designModule, statusModule } = study.protocolSection;
 				const { designInfo, enrollmentInfo } = designModule;
@@ -290,12 +299,14 @@ for (const drug of drugs) {
 					continue;
 				}
 				if (statusModule.overallStatus === StudyStatus.COMPLETED) {
-					totalCompletedN += enrollmentInfo.count;
+					completedN += enrollmentInfo.count;
 				}
+				completedCount += 1;
 				totalN += enrollmentInfo.count;
 			}
 			drug.clinicalStudies.totalN = totalN;
-			drug.clinicalStudies.totalCompletedN = totalCompletedN;
+			drug.clinicalStudies.completedN = completedN;
+			drug.clinicalStudies.completedCount = completedCount;
 			nextPageToken = data.nextPageToken;
 		} catch (error) {
 			console.error(error);
@@ -315,6 +326,7 @@ const csvRows = [
 		"fda_approved",
 		"fda_approval_date",
 		"rct_count",
+		"rct_count_completed",
 		"rct_total_n",
 		"rct_total_completed_n",
 	],
