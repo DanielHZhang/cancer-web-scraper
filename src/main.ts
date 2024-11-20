@@ -7,20 +7,31 @@ import { scrapeCancerTypes, scrapeDrugUrls, scrapeDrugNames } from "./web/cancer
 import { getClinicalTrials } from "./web/clinical-trials-gov/api";
 import { scrapeDailyMedInfo } from "./web/dailymed-nih-gov";
 import { getFdaInfo } from "./web/fda-gov/api";
+import { Command } from "commander";
+import { parseIntArg } from "./utils/number";
+
+interface Argv {
+	cancer?: string;
+	drugLimit?: number;
+}
 
 async function main() {
-	const cancerType: string | null = "Breast Cancer";
-	const drugLimit: number = 5;
+	const program = new Command()
+		.option("-c, --cancer <type>", "limit scraping to specific cancer type")
+		.option("-dl, --drug-limit [number]", "limit number of drugs scraped per cancer type", parseIntArg)
+		.parse();
+	const args = program.opts<Argv>();
+	console.log("CLI arguments:", args);
 
 	const browser = await chromium.launch({ headless: false });
 	const context = await browser.newContext();
 
 	// Scrape cancer types
 	const page = await browser.newPage();
-	let data = await scrapeCancerTypes(page);
-	if (cancerType) {
-		data = data.filter((c) => c.type === cancerType); // Limit cancer to specific type if specified
-	}
+	const data = (await scrapeCancerTypes(page)).filter((cancer) => {
+		// Limit cancer to specific type if specified
+		return args.cancer ? cancer.type.includes(args.cancer.toLowerCase()) : true;
+	});
 	console.log(`Scraped ${data.length} cancer types.`);
 
 	// Scrape drugs in parallel
@@ -33,7 +44,7 @@ async function main() {
 
 	for (const cancer of data) {
 		await batchPages({
-			data: drugLimit > 0 ? cancer.drugs.slice(0, drugLimit) : cancer.drugs,
+			data: args.drugLimit && args.drugLimit > 0 ? cancer.drugs.slice(0, args.drugLimit) : cancer.drugs,
 			context,
 			batchSize: 20,
 			run: async (page, drug) => {
