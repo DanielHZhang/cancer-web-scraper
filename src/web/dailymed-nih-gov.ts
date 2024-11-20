@@ -1,6 +1,8 @@
 import type { Page } from "@playwright/test";
 import type { Drug } from "../types";
 import { baseUrls } from "../config";
+import { analyzeDailyMedStudy } from "../analyze/dailymed-study-info";
+import { analyzeTherapyType } from "../analyze/therapy-type";
 
 export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 	if (!drug.urls.dailyMed) {
@@ -24,11 +26,27 @@ export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 		getClinicalStudyText(page).catch(() => console.warn(drug.name, "missing clinical studies section")),
 	]);
 	drug.description = description ?? "";
-	drug.dailyMed.previewText = previewText ?? undefined;
+	drug.dailyMed.studyText = previewText ?? undefined;
 	console.log(`Scraped DailyMed info for ${drug.name}.`);
 }
 
-export async function analyzeDailyMedInfo() {}
+export async function analyzeDailyMedInfo(drug: Drug) {
+	try {
+		const [therapyResult, studyInfoResult] = await Promise.all([
+			drug.description ? analyzeTherapyType(drug) : undefined,
+			drug.dailyMed.studyText ? analyzeDailyMedStudy(drug) : undefined,
+		]);
+		if (therapyResult) {
+			drug.therapyType = therapyResult.therapyType;
+		}
+		if (studyInfoResult) {
+			drug.dailyMed.studyName = studyInfoResult.studyName;
+			drug.dailyMed.studyN = studyInfoResult.studyNumParticipants;
+		}
+	} catch (error) {
+		console.error(error);
+	}
+}
 
 /**
  * Get drug description from DailyMed.
@@ -39,7 +57,7 @@ export async function getDrugDescription(page: Page) {
 		.locator("a", { hasText: /11\s+DESCRIPTION/i })
 		.locator("..")
 		.locator(".Section.toggle-content");
-	const description = await descriptionSection.innerText();
+	const description = await descriptionSection.innerText({ timeout: 2000 });
 	return description;
 }
 
@@ -51,7 +69,7 @@ export async function getClinicalStudyText(page: Page) {
 		.locator(".drug-label-sections")
 		.locator("a", { hasText: /14\s+CLINICAL\s+STUDIES/i })
 		.locator("..")
-		.locator(".preview-text");
-	const previewText = await preview.innerText({ timeout: 1000 });
+		.locator(".Section");
+	const previewText = await preview.innerText({ timeout: 2000 });
 	return previewText;
 }

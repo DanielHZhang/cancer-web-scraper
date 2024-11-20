@@ -29,7 +29,7 @@ export async function analyzeDailyMedStudy(drug: Drug) {
 				Drug name: ${drug.name}
 				Study text:
 				"""
-				${drug.dailyMed.previewText}
+				${drug.dailyMed.studyText!.slice(0, 10000)}
 				"""`,
 			},
 		],

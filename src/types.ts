@@ -11,6 +11,7 @@ export type Drug = {
 	brandName: string;
 	genericName: string; // Name but without the () if there is an alternative name
 	description: string;
+	therapyType?: TherapyType;
 	cancerType: string;
 	fda: {
 		approved: boolean;
@@ -21,7 +22,7 @@ export type Drug = {
 		dailyMed?: string;
 	};
 	dailyMed: {
-		previewText?: string;
+		studyText?: string;
 		studyName?: string;
 		studyN?: number;
 	};
@@ -32,3 +33,11 @@ export type Drug = {
 		completedCount: number;
 	};
 };
+
+export enum TherapyType {
+	Chemotherapy = "chemotherapy",
+	Immunotherapy = "immunotherapy",
+	HormonalTherapy = "hormonal therapy",
+	TargetedTherapy = "targeted therapy",
+	Unknown = "unknown",
+}
