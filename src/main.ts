@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 import { chromium } from "@playwright/test";
 import { batchPages } from "./utils/batch";
 import { writeResultsCsv } from "./utils/csv";

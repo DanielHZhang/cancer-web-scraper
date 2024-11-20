@@ -11,8 +11,11 @@
 	"author": "",
 	"dependencies": {
 		"@playwright/test": "^1.48.2",
+		"@sinclair/typebox": "^0.34.4",
 		"csv-stringify": "^6.5.1",
-		"dayjs": "^1.11.13"
+		"dayjs": "^1.11.13",
+		"dotenv": "^16.4.5",
+		"openai": "^4.72.0"
 	},
 	"devDependencies": {
 		"@types/node": "^22.9.0",

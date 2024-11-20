@@ -1,0 +1,13 @@
+{
+	"compilerOptions": {
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"target": "ESNext",
+		"allowJs": false,
+		"strict": true,
+		"strictNullChecks": true,
+		"strictFunctionTypes": true,
+		"sourceMap": true
+	},
+	"exclude": ["node_modules", "**/node_modules/*"]
+}
