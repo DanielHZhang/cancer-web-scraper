@@ -24,9 +24,11 @@ export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 		getClinicalStudyText(page).catch(() => console.warn(drug.name, "missing clinical studies section")),
 	]);
 	drug.description = description ?? "";
-	drug.clinicalStudies.previewText = previewText ?? undefined;
+	drug.dailyMed.previewText = previewText ?? undefined;
 	console.log(`Scraped DailyMed info for ${drug.name}.`);
 }
+
+export async function analyzeDailyMedInfo() {}
 
 /**
  * Get drug description from DailyMed.

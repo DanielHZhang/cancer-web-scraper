@@ -5,13 +5,13 @@ import type { Drug } from "../../types";
 
 export async function getFdaInfo(drug: Drug) {
 	const brandApprovalDate = await getApprovalDate(drug.brandName, "brand");
-	drug.earliestFdaApprovalDate = brandApprovalDate;
+	drug.fda.earliestApprovalDate = brandApprovalDate;
 
 	if (!brandApprovalDate || drug.genericName !== drug.brandName) {
 		const genericApprovalDate = await getApprovalDate(drug.genericName, "generic");
 
 		if (genericApprovalDate && (!brandApprovalDate || genericApprovalDate.isBefore(brandApprovalDate))) {
-			drug.earliestFdaApprovalDate = genericApprovalDate;
+			drug.fda.earliestApprovalDate = genericApprovalDate;
 		}
 	}
 

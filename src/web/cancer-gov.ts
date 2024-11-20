@@ -63,7 +63,8 @@ export async function scrapeDrugNames(page: Page, cancer: CancerData) {
 						genericName: genericName || name,
 						description: "",
 						cancerType: cancer.type,
-						fdaApproved: false,
+						fda: { approved: false },
+						dailyMed: {},
 						urls: { cancerGov: href.startsWith(baseUrls.cancerGov) ? href : `${baseUrls.cancerGov}${href}` },
 						clinicalStudies: {
 							totalN: -1,
@@ -91,7 +92,7 @@ export async function scrapeDrugUrls(page: Page, drug: Drug) {
 
 	if (/FDA\s+Approved/i.test(rowTitle)) {
 		const value = await row.locator(".column2").innerText();
-		drug.fdaApproved = /Yes/i.test(value);
+		drug.fda.approved = /Yes/i.test(value);
 	}
 
 	const labelAnchor = body.locator("a", { hasText: /FDA\s+label\s+information/i });
@@ -102,5 +103,5 @@ export async function scrapeDrugUrls(page: Page, drug: Drug) {
 	}
 
 	drug.urls.dailyMed = dailyMedUrl;
-	console.log(`Scraped DailyMed URL for ${drug.name}. FDA approved: ${drug.fdaApproved}.`);
+	console.log(`Scraped DailyMed URL for ${drug.name}. FDA approved: ${drug.fda.approved}`);
 }

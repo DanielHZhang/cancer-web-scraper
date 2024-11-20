@@ -1,8 +1,8 @@
-import { openai } from "./openai";
-import { fmt } from "../utils/prompt";
 import { Type as T } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { Drug } from "../types";
+import { fmt } from "../utils/prompt";
+import { openai } from "./openai";
 
 enum TherapyType {
 	Chemotherapy = "chemotherapy",
@@ -58,11 +58,7 @@ export async function analyzeTherapyType(drug: Drug) {
 	if (!content) {
 		throw new Error("No content returned.");
 	}
-	const therapy = JSON.parse(content);
-	Value.Assert(therapySchema, therapy);
-	return therapy.therapyType;
-}
-
-export async function analyzeDailyMedStudy(drug: Drug) {
-	//
+	const data = JSON.parse(content);
+	Value.Assert(therapySchema, data);
+	return data;
 }
