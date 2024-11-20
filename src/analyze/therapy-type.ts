@@ -1,6 +1,6 @@
 import { Type as T } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { TherapyType, type Drug } from "../types";
+import { type Drug, TherapyType } from "../db";
 import { fmt } from "../utils/prompt";
 import { openai } from "./openai";
 

@@ -1,25 +1,25 @@
 import "dotenv/config";
 
 import { chromium } from "@playwright/test";
+import { Command } from "commander";
+import type { Drug } from "./db";
 import { batchPages } from "./utils/batch";
 import { writeResultsCsv } from "./utils/csv";
-import { scrapeCancerTypes, scrapeDrugUrls, scrapeDrugNames } from "./web/cancer-gov";
-import { getClinicalTrials } from "./web/clinical-trials-gov/api";
-import { scrapeDailyMedInfo } from "./web/dailymed-nih-gov";
-import { getFdaInfo } from "./web/fda-gov/api";
-import { Command } from "commander";
 import { parseIntArg } from "./utils/number";
-import { db } from "./db";
+import { scrapeCancerTypes, scrapeDrugNames, scrapeDrugUrls } from "./web/cancer-gov";
+import { getClinicalTrials } from "./web/clinical-trials-gov/api";
+import { analyzeDailyMedInfo, scrapeDailyMedInfo } from "./web/dailymed-nih-gov";
+import { getFdaInfo } from "./web/fda-gov/api";
 
 interface Argv {
 	cancer?: string;
-	drugLimit?: number;
+	drugLimit: number;
 }
 
 async function main() {
 	const program = new Command()
 		.option("-c, --cancer <type>", "limit scraping to specific cancer type")
-		.option("-dl, --drug-limit [number]", "limit number of drugs scraped per cancer type", parseIntArg)
+		.option("-dl, --drug-limit [number]", "limit number of drugs scraped per cancer type", parseIntArg, -1)
 		.parse();
 	const args = program.opts<Argv>();
 
@@ -28,36 +28,29 @@ async function main() {
 
 	// Scrape cancer types
 	const page = await browser.newPage();
-	const data = (await scrapeCancerTypes(page)).filter((cancer) => {
-		// Limit cancer to specific type if specified
-		return args.cancer ? cancer.type.includes(args.cancer.toLowerCase()) : true;
-	});
-	console.log(`Scraped ${data.length} cancer types.`);
+	const cancers = await scrapeCancerTypes(page, args.cancer);
+	const drugs: Drug[] = [];
 
-	// Scrape drugs in parallel
-	await batchPages({
-		data,
-		context,
-		batchSize: 20,
-		run: scrapeDrugNames,
-	});
-
-	for (const cancer of data) {
-		await batchPages({
-			data: args.drugLimit && args.drugLimit > 0 ? cancer.drugs.slice(0, args.drugLimit) : cancer.drugs,
+	for (const cancer of cancers) {
+		const newDrugs = await scrapeDrugNames(page, cancer);
+		const updatedDrugs = await batchPages({
+			data: args.drugLimit > 0 ? newDrugs.slice(0, args.drugLimit) : newDrugs,
 			context,
 			batchSize: 20,
 			run: async (page, drug) => {
-				await scrapeDrugUrls(page, drug);
-				await scrapeDailyMedInfo(page, drug);
-				await getFdaInfo(drug);
-				await getClinicalTrials(drug);
+				drug = await scrapeDrugUrls(page, drug);
+				drug = await scrapeDailyMedInfo(page, drug);
+				drug = await analyzeDailyMedInfo(drug);
+				drug = await getFdaInfo(drug);
+				drug = await getClinicalTrials(drug);
 				console.log("Finished:", drug.name);
+				return drug;
 			},
 		});
+		drugs.push(...updatedDrugs);
 	}
 
-	await writeResultsCsv(data);
+	await writeResultsCsv(cancers, drugs);
 	console.log("Done.");
 
 	await context.close();

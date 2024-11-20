@@ -27,10 +27,10 @@ export interface DailyMedData {
 }
 
 export interface ClinicalTrialsData {
-	totalN: number;
-	completedN: number;
-	totalCount: number;
-	completedCount: number;
+	totalN?: number;
+	completedN?: number;
+	totalCount?: number;
+	completedCount?: number;
 }
 
 export enum TherapyType {
@@ -43,6 +43,7 @@ export enum TherapyType {
 
 export const drugs = sqliteTable("drugs", {
 	id: integer().primaryKey({ autoIncrement: true }),
+	name: text().unique().notNull(),
 	brandName: text().notNull(),
 	genericName: text().notNull(),
 	description: text(),
@@ -50,8 +51,8 @@ export const drugs = sqliteTable("drugs", {
 	fdaApproved: integer({ mode: "boolean" }).default(false),
 	fdaEarliestApprovalDate: integer({ mode: "timestamp_ms" }),
 	urls: text({ mode: "json" }).$type<DrugUrls>().notNull(),
-	dailyMed: text({ mode: "json" }).$type<DailyMedData>(),
-	clinicalTrials: text({ mode: "json" }).$type<ClinicalTrialsData>(),
+	dailyMed: text({ mode: "json" }).$type<DailyMedData>().notNull().default({}),
+	clinicalTrials: text({ mode: "json" }).$type<ClinicalTrialsData>().notNull().default({}),
 	cancerId: integer()
 		.notNull()
 		.references(() => cancers.id, { onDelete: "cascade" }),

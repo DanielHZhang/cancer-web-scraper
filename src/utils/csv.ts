@@ -1,41 +1,52 @@
 import { stringify } from "csv-stringify/sync";
-import fs from "node:fs/promises";
-import type { CancerData } from "../types";
-import { outputFolder } from "../config";
-import path from "node:path";
 import dayjs from "dayjs";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { outputFolder } from "../config";
+import { TherapyType, type Cancer, type Drug } from "../db";
 
-export async function writeResultsCsv(data: CancerData[]) {
-	const csvRows = [
+type TupleN<T, N, R extends T[] = []> = R["length"] extends N ? R : TupleN<T, N, [...R, T]>;
+
+export async function writeResultsCsv(cancers: Cancer[], drugs: Drug[]) {
+	const cancerIdMap = new Map([...cancers.map((cancer) => [cancer.id, cancer] as const)]);
+	const csvRows: TupleN<string, 12>[] = [
 		[
+			"cancer_type",
 			"drug_generic_name",
 			"drug_brand_name",
-			"cancer_type",
+			"drug_therapy_type",
 			"fda_approved",
 			"fda_approval_date",
-			"rct_count",
-			"rct_count_completed",
-			"rct_total_n",
+			"dailymed_study_name",
+			"dailymed_study_n",
+			"rct_completed_count",
+			"rct_total_count",
 			"rct_completed_n",
+			"rct_total_n",
 		],
 	];
-	data.forEach((cancer) => {
-		cancer.drugs.forEach((drug) => {
-			csvRows.push([
-				drug.genericName,
-				drug.brandName,
-				cancer.type,
-				drug.fda.approved ? "yes" : "no",
-				drug.fda.earliestApprovalDate?.format("YYYY-MM-DD") || "unknown",
-				drug.clinicalStudies.totalCount >= 0 ? drug.clinicalStudies.totalCount.toString() : "unknown",
-				drug.clinicalStudies.totalN >= 0 ? drug.clinicalStudies.totalN.toString() : "unknown",
-				drug.clinicalStudies.completedN >= 0 ? drug.clinicalStudies.completedN.toString() : "unknown",
-			]);
-		});
+
+	drugs.forEach((drug) => {
+		const { dailyMed, clinicalTrials } = drug;
+		const cancer = cancerIdMap.get(drug.cancerId);
+		csvRows.push([
+			cancer?.type ?? "",
+			drug.genericName,
+			drug.brandName,
+			drug.therapyType ?? TherapyType.Unknown,
+			drug.fdaApproved ? "yes" : "no",
+			drug.fdaEarliestApprovalDate ? dayjs(drug.fdaEarliestApprovalDate).format("YYYY-MM-DD") : "",
+			dailyMed.studyName ?? "",
+			dailyMed.studyN ? dailyMed.studyN.toString() : "",
+			clinicalTrials.completedCount != null ? clinicalTrials.completedCount.toString() : "",
+			clinicalTrials.totalCount != null ? clinicalTrials.totalCount.toString() : "",
+			clinicalTrials.completedN != null ? clinicalTrials.completedN.toString() : "",
+			clinicalTrials.totalN != null ? clinicalTrials.totalN.toString() : "",
+		]);
 	});
 
-	const csvOutput = stringify(csvRows);
 	await fs.mkdir(outputFolder, { recursive: true }).catch();
+	const csvOutput = stringify(csvRows);
 	const outputFileName = path.join(outputFolder, `output-${dayjs().format("YYYY-MM-DD-HHmm")}.csv`);
 	await fs.writeFile(outputFileName, csvOutput, { flag: "w+" });
 }

@@ -1,6 +1,6 @@
 import { Type as T } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { Drug } from "../types";
+import type { Drug } from "../db";
 import { fmt } from "../utils/prompt";
 import { openai } from "./openai";
 
@@ -12,6 +12,9 @@ const studyInfoSchema = T.Object({
 });
 
 export async function analyzeDailyMedStudy(drug: Drug) {
+	if (!drug.dailyMed?.studyText) {
+		throw new Error("Missing study text for analysis.");
+	}
 	const completion = await openai.chat.completions.create({
 		model: "gpt-4o",
 		messages: [
@@ -29,7 +32,7 @@ export async function analyzeDailyMedStudy(drug: Drug) {
 				Drug name: ${drug.name}
 				Study text:
 				"""
-				${drug.dailyMed.studyText!.slice(0, 10000)}
+				${drug.dailyMed.studyText.slice(0, 10000)}
 				"""`,
 			},
 		],

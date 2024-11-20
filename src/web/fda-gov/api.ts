@@ -1,21 +1,31 @@
 import dayjs from "dayjs";
 import { baseUrls } from "../../config";
+import { db, drugs, type Drug } from "../../db";
 import type { GetDrugResponse } from "./types";
-import type { Drug } from "../../types";
+import { eq } from "drizzle-orm";
 
 export async function getFdaInfo(drug: Drug) {
 	const brandApprovalDate = await getApprovalDate(drug.brandName, "brand");
-	drug.fda.earliestApprovalDate = brandApprovalDate;
-
+	if (brandApprovalDate) {
+		drug.fdaEarliestApprovalDate = brandApprovalDate.toDate();
+	}
 	if (!brandApprovalDate || drug.genericName !== drug.brandName) {
 		const genericApprovalDate = await getApprovalDate(drug.genericName, "generic");
 
 		if (genericApprovalDate && (!brandApprovalDate || genericApprovalDate.isBefore(brandApprovalDate))) {
-			drug.fda.earliestApprovalDate = genericApprovalDate;
+			drug.fdaEarliestApprovalDate = genericApprovalDate.toDate();
 		}
 	}
 
 	console.log(`Fetched FDA approval info for ${drug.name}.`);
+
+	const [updatedDrug] = await db
+		.update(drugs)
+		.set({ fdaEarliestApprovalDate: drug.fdaEarliestApprovalDate })
+		.where(eq(drugs.id, drug.id))
+		.returning();
+
+	return updatedDrug;
 }
 
 export async function getApprovalDate(drugName: string, type: "brand" | "generic") {

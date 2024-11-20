@@ -1,14 +1,15 @@
+import { eq } from "drizzle-orm";
 import { baseUrls } from "../../config";
-import type { Drug } from "../../types";
+import { db, drugs, type Drug } from "../../db";
 import { StudyStatus, type GetStudiesResponse } from "./types";
 
 /**
  * Query clinicaltrials.gov for the number of trials with the drug
  */
 export async function getClinicalTrials(drug: Drug) {
-	let nextPageToken: string | symbol | undefined = Symbol();
-	while (nextPageToken) {
-		try {
+	try {
+		let nextPageToken: string | symbol | undefined = Symbol(); // Initially set to symbol so we don't append on first request
+		while (nextPageToken) {
 			const query = new URLSearchParams({
 				format: "json",
 				"query.intr": drug.genericName,
@@ -18,7 +19,7 @@ export async function getClinicalTrials(drug: Drug) {
 				pageSize: "50",
 			});
 			if (typeof nextPageToken === "string") {
-				query.append("pageToken", nextPageToken);
+				query.append("pageToken", nextPageToken); // Only append when the token is returned
 			}
 			const response = await fetch(`${baseUrls.clinicalTrialsApi}?${query.toString()}`, {
 				headers: { Accept: "application/json" },
@@ -26,40 +27,49 @@ export async function getClinicalTrials(drug: Drug) {
 			if (!response.ok) {
 				throw response;
 			}
+
 			const data: GetStudiesResponse = await response.json();
-			if (typeof data.totalCount === "number") {
-				drug.clinicalStudies.totalCount = data.totalCount;
-			}
-			let totalN = 0;
-			let completedN = 0;
-			let completedCount = 0;
+			const { clinicalTrials: trials } = drug; // Use reference to object when incrementing
+			trials.totalN = 0;
+			trials.completedN = 0;
+			trials.completedCount = 0;
+			trials.totalCount = 0;
+
 			for (const study of data.studies) {
 				const { designModule, statusModule } = study.protocolSection;
 				const { designInfo, enrollmentInfo } = designModule;
 				if (designInfo?.allocation !== "RANDOMIZED") {
-					continue;
+					continue; // Ignore non-randomized studies
 				}
 				if (
 					statusModule.overallStatus === StudyStatus.COMPLETED ||
 					statusModule.lastKnownStatus === StudyStatus.COMPLETED
 				) {
-					completedN += enrollmentInfo.count;
+					trials.completedN += enrollmentInfo.count;
+					trials.completedCount += 1;
 				}
-				completedCount += 1;
-				totalN += enrollmentInfo.count;
+				trials.totalN += enrollmentInfo.count;
+				trials.totalCount += 1;
 			}
-			drug.clinicalStudies.totalN = totalN;
-			drug.clinicalStudies.completedN = completedN;
-			drug.clinicalStudies.completedCount = completedCount;
+
 			nextPageToken = data.nextPageToken;
-		} catch (error) {
-			if (error instanceof Response) {
-				console.error(`clinicaltrials.gov API request failed: ${error.status} ${error.statusText}`);
-			} else {
-				console.error(error);
-			}
-			break;
 		}
+
+		console.log(`Fetched clinical trials info for ${drug.name}.`);
+
+		const [updatedDrug] = await db
+			.update(drugs)
+			.set({ clinicalTrials: drug.clinicalTrials })
+			.where(eq(drugs.id, drug.id))
+			.returning();
+
+		return updatedDrug;
+	} catch (error) {
+		if (error instanceof Response) {
+			console.error(`clinicaltrials.gov API request failed: ${error.status} ${error.statusText}`);
+		} else {
+			console.error(error);
+		}
+		return drug;
 	}
-	console.log(`Fetched clinical trials info for ${drug.name}.`);
 }

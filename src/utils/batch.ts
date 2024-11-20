@@ -1,22 +1,25 @@
 import type { BrowserContext, Page } from "@playwright/test";
 
-interface Params<T> {
+interface Params<T, U> {
 	context: BrowserContext;
 	batchSize: number;
 	data: T[];
-	run: (page: Page, item: T) => Promise<void>;
+	run: (page: Page, item: T) => Promise<U>;
 }
-export async function batchPages<T>({ context, batchSize, data, run }: Params<T>) {
+export async function batchPages<T, U>({ context, batchSize, data, run }: Params<T, U>) {
 	let currentIndex = 0;
 	const total = data.length;
+	const results: U[] = [];
 	while (currentIndex < total) {
 		await Promise.all(
 			data.slice(currentIndex, currentIndex + batchSize).map(async (item) => {
 				const page = await context.newPage();
-				await run(page, item);
+				const result = await run(page, item);
+				results.push(result);
 				await page.close();
 			}),
 		);
 		currentIndex += batchSize;
 	}
+	return results;
 }
