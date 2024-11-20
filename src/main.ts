@@ -9,6 +9,7 @@ import { scrapeDailyMedInfo } from "./web/dailymed-nih-gov";
 import { getFdaInfo } from "./web/fda-gov/api";
 import { Command } from "commander";
 import { parseIntArg } from "./utils/number";
+import { db } from "./db";
 
 interface Argv {
 	cancer?: string;
@@ -21,7 +22,6 @@ async function main() {
 		.option("-dl, --drug-limit [number]", "limit number of drugs scraped per cancer type", parseIntArg)
 		.parse();
 	const args = program.opts<Argv>();
-	console.log("CLI arguments:", args);
 
 	const browser = await chromium.launch({ headless: false });
 	const context = await browser.newContext();

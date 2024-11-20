@@ -10,3 +10,6 @@ export const baseUrls = {
 const workDir = process.cwd();
 export const cacheFolder = path.join(workDir, ".cache");
 export const outputFolder = path.join(workDir, ".output");
+
+const databaseFile = "database.sqlite";
+export const databaseUrl = `file://${cacheFolder}/${databaseFile}`;
