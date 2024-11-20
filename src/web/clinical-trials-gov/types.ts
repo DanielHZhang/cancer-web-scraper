@@ -27,7 +27,7 @@ export interface ProtocolSection {
 type DesignModule = {
 	studyType: "INTERVENTIONAL" | "OBSERVATIONAL"; // Assumes a fixed set of values
 	phases: string[]; // Adjust with specific phase enums if needed
-	designInfo: {
+	designInfo?: {
 		allocation: string; // Consider defining specific allocation types
 		interventionModel: string; // Consider defining specific intervention models
 		primaryPurpose: string; // Consider defining specific purposes
@@ -82,13 +82,13 @@ export interface IdentificationModule {
 	organization: Organization;
 }
 
-export interface OrgStudyIdInfo {
+interface OrgStudyIdInfo {
 	id: string;
 	type: OrgStudyIdType;
 	link: string;
 }
 
-export enum OrgStudyIdType {
+enum OrgStudyIdType {
 	NIH = "NIH",
 	FDA = "FDA",
 	VA = "VA",
@@ -97,14 +97,14 @@ export enum OrgStudyIdType {
 	SAMHSA = "SAMHSA",
 }
 
-export interface SecondaryIdInfo {
+interface SecondaryIdInfo {
 	id: string;
 	type: SecondaryIdType;
 	domain: string;
 	link: string;
 }
 
-export enum SecondaryIdType {
+enum SecondaryIdType {
 	NIH = "NIH",
 	FDA = "FDA",
 	VA = "VA",

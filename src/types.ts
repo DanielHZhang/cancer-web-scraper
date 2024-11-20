@@ -16,7 +16,7 @@ export type Drug = {
 	cancerType: string;
 	urls: {
 		cancerGov: string;
-		dailyMedUrl?: string;
+		dailyMed?: string;
 	};
 	clinicalStudies: {
 		totalN: number;
