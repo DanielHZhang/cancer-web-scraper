@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import { chromium } from "@playwright/test";
 import { Command } from "commander";
-import type { Drug } from "./db";
+import { type Drug } from "./db";
 import { batchPages } from "./utils/batch";
 import { writeResultsCsv } from "./utils/csv";
 import { parseIntArg } from "./utils/number";
@@ -27,7 +27,6 @@ async function main() {
 	const context = await browser.newContext();
 
 	try {
-		// Scrape cancer types
 		const page = await browser.newPage();
 		const cancers = await scrapeCancerTypes(page, args.cancer);
 		const drugs: Drug[] = [];

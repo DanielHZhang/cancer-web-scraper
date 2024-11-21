@@ -29,6 +29,13 @@
       "when": 1732162764423,
       "tag": "0003_tired_war_machine",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1732165900501,
+      "tag": "0004_sloppy_nomad",
+      "breakpoints": true
     }
   ]
 }

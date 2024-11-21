@@ -1,0 +1,1 @@
+ALTER TABLE `drugs` ADD `gptReasoning` text DEFAULT '{}' NOT NULL;

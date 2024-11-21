@@ -60,7 +60,7 @@ export async function getClinicalTrials(drug: Drug) {
 			nextPageToken = data.nextPageToken;
 		}
 
-		console.log(`Fetched clinical trials info for ${drug.name}.`);
+		console.log(drug.name, "fetched clinical trials info");
 
 		const [updatedDrug] = await db
 			.update(drugs)

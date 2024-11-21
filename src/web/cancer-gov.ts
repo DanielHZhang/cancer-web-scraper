@@ -37,7 +37,7 @@ export async function scrapeCancerTypes(page: Page, cancerLimit?: string): Promi
 	}
 
 	const result = await db.insert(cancers).values(filtered).onConflictDoNothing();
-	console.log(`Inserted ${result.rowsAffected} new cancer rows.`);
+	console.log(`Inserted ${result.rowsAffected} new cancer(s).`);
 
 	return db.query.cancers.findMany({
 		where: inArray(
@@ -91,10 +91,10 @@ export async function scrapeDrugNames(page: Page, cancer: Cancer, drugLimit: num
 	);
 
 	const filtered = scraped.filter((drug) => !!drug).slice(0, drugLimit > 0 ? drugLimit : Infinity);
-	console.log(`Scraped ${filtered.length} drugs for ${cancer.type}.`);
+	console.log(`Scraped ${filtered.length} drug(s) for cancer: ${cancer.type}.`);
 
 	const result = await db.insert(drugs).values(filtered).onConflictDoNothing();
-	console.log(`Inserted ${result.rowsAffected} new drugs.`);
+	console.log(`Inserted ${result.rowsAffected} new drug(s).`);
 
 	return db.query.drugs.findMany({
 		where: inArray(
@@ -122,6 +122,7 @@ export async function scrapeDrugUrls(page: Page, drug: Drug) {
 	let dailyMedUrl = await labelAnchor.getAttribute("href");
 	if (dailyMedUrl && dailyMedUrl.startsWith(baseUrls.dailyMed)) {
 		drug.urls.dailyMed = dailyMedUrl;
+	} else {
 		console.warn(drug.name, "label information url is not to dailymed:", dailyMedUrl);
 	}
 

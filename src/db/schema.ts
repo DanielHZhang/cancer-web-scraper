@@ -43,6 +43,10 @@ export interface ClinicalTrialsData {
 	completedCount?: number;
 }
 
+export interface GptReasoningData {
+	therapyType?: string;
+}
+
 export enum TherapyType {
 	Chemotherapy = "chemotherapy",
 	Immunotherapy = "immunotherapy",
@@ -62,6 +66,7 @@ export const drugs = sqliteTable("drugs", {
 	fda: text({ mode: "json" }).$type<FdaData>().notNull().default({}),
 	dailyMed: text({ mode: "json" }).$type<DailyMedData>().notNull().default({}),
 	clinicalTrials: text({ mode: "json" }).$type<ClinicalTrialsData>().notNull().default({}),
+	gptReasoning: text({ mode: "json" }).$type<GptReasoningData>().notNull().default({}),
 	cancerId: integer()
 		.notNull()
 		.references(() => cancers.id, { onDelete: "cascade" }),

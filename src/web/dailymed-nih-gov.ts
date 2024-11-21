@@ -7,7 +7,12 @@ import { db, type Drug, drugs, TherapyType } from "../db";
 import dayjs from "dayjs";
 
 export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
-	if (!drug.urls.dailyMed || drug.dailyMed.retrievedAt) {
+	if (!drug.urls.dailyMed) {
+		console.log(drug.name, "missing DailyMed url, skipping scrape");
+		return drug;
+	}
+	if (drug.dailyMed.retrievedAt) {
+		console.log(drug.name, "using cached DailyMed data");
 		return drug;
 	}
 
@@ -30,11 +35,11 @@ export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 	]);
 	if (description) {
 		drug.description = description;
-		console.log(drug.name, "- scraped DailyMed drug description");
+		console.log(drug.name, "scraped DailyMed drug description");
 	}
 	if (studyText) {
 		drug.dailyMed.studyText = studyText;
-		console.log(drug.name, "- scraped DailyMed study text");
+		console.log(drug.name, "scraped DailyMed study text");
 	}
 	if (!description && !studyText) {
 		console.warn(drug.name, "no info could be scraped from DailyMed");
@@ -58,7 +63,8 @@ export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 
 export async function analyzeDailyMedInfo(drug: Drug) {
 	if (drug.therapyType || drug.dailyMed.studyName || drug.dailyMed.studyN) {
-		return drug; // Used saved GPT results instead of requerying
+		console.log(drug.name, "using cached GPT analysis");
+		return drug;
 	}
 	try {
 		const [therapyResult, studyInfoResult] = await Promise.all([
@@ -67,6 +73,9 @@ export async function analyzeDailyMedInfo(drug: Drug) {
 		]);
 
 		drug.therapyType = therapyResult?.therapyType ?? TherapyType.Unknown; // Populate so that GPT is not requeried
+		if (therapyResult) {
+			drug.gptReasoning.therapyType = therapyResult.reasoning;
+		}
 
 		if (studyInfoResult) {
 			drug.dailyMed.studyName = studyInfoResult.studyName;
@@ -75,7 +84,11 @@ export async function analyzeDailyMedInfo(drug: Drug) {
 
 		const [updatedDrug] = await db
 			.update(drugs)
-			.set({ therapyType: drug.therapyType, dailyMed: drug.dailyMed })
+			.set({
+				therapyType: drug.therapyType,
+				dailyMed: drug.dailyMed,
+				gptReasoning: drug.gptReasoning,
+			})
 			.where(eq(drugs.id, drug.id))
 			.returning();
 
@@ -107,7 +120,7 @@ export async function getClinicalStudyText(page: Page) {
 		.locator(".drug-label-sections")
 		.locator("a", { hasText: /14\s+CLINICAL\s+STUDIES/i })
 		.locator("..")
-		.locator(".Section");
+		.locator(".Section.toggle-content.closed.long-content");
 	const previewText = await preview.innerText({ timeout: 2000 });
 	return previewText;
 }

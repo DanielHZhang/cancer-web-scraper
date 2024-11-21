@@ -5,7 +5,7 @@ import { fmt } from "../utils/prompt";
 import { openai } from "./openai";
 
 const therapySchema = T.Object({
-	reasoning: T.String({ maxLength: 400, description: "Your concise reasoning for your choice." }),
+	reasoning: T.String({ description: "Your concise reasoning for your choice." }),
 	therapyType: T.Enum(TherapyType, { description: "The therapy type you have classified the drug as." }),
 });
 
