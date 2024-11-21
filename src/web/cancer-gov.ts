@@ -1,8 +1,7 @@
 import type { Page } from "@playwright/test";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, like, sql } from "drizzle-orm";
 import { baseUrls } from "../config";
 import { cancers, db, drugs, type Cancer, type Drug } from "../db";
-import type { ScrapedCancerData, ScrapedDrugData } from "./types";
 
 /**
  * Scrape all cancer types.
@@ -13,42 +12,45 @@ export async function scrapeCancerTypes(page: Page, cancerLimit?: string): Promi
 	const liElements = await ul.locator("li").all();
 
 	const scraped = await Promise.all(
-		liElements.map(async (li): Promise<ScrapedCancerData> => {
+		liElements.map(async (li): Promise<typeof cancers.$inferInsert> => {
 			const anchor = li.locator("a");
 			const [href, name] = await Promise.all([anchor.getAttribute("href"), anchor.innerText()]);
 			const match = name.match(/Drugs Approved for (.+)/i);
 
 			return {
 				type: (match?.[1] || name).replace(/cancer/i, "").trim(),
-				url: href?.startsWith(baseUrls.cancerGov) ? href : `${baseUrls.cancerGov}${href || ""}`,
+				urls: {
+					cancerGov: href?.startsWith(baseUrls.cancerGov) ? href : `${baseUrls.cancerGov}${href || ""}`,
+				},
 			};
 		}),
 	);
 	console.log(`Scraped ${scraped.length} cancer types.`);
 
 	// Limit cancer to specific type if specified
-	const newCancers = await db
-		.insert(cancers)
-		.values(
-			scraped
-				.filter((cancer) => (cancerLimit ? cancer.type.includes(cancerLimit.toLowerCase()) : true))
-				.map((cancer) => ({
-					type: cancer.type,
-					urls: { cancerGov: cancer.url },
-				})),
-		)
-		.onConflictDoUpdate({
-			target: cancers.type,
-			set: { urls: sql`excluded.${cancers.urls.name}` },
-		})
-		.returning();
-	return newCancers;
+	const filtered = scraped.filter((cancer) =>
+		cancerLimit ? cancer.type.toLowerCase().includes(cancerLimit.toLowerCase()) : true,
+	);
+
+	if (filtered.length === 0) {
+		throw new Error("No cancer types returned after filtering.");
+	}
+
+	const result = await db.insert(cancers).values(filtered).onConflictDoNothing();
+	console.log(`Inserted ${result.rowsAffected} new cancer rows.`);
+
+	return db.query.cancers.findMany({
+		where: inArray(
+			cancers.type,
+			filtered.map(({ type }) => type),
+		),
+	});
 }
 
 /**
  * Scrape drug names for the specified cancer type.
  */
-export async function scrapeDrugNames(page: Page, cancer: Cancer): Promise<Drug[]> {
+export async function scrapeDrugNames(page: Page, cancer: Cancer, drugLimit: number): Promise<Drug[]> {
 	await page.goto(cancer.urls.cancerGov, { waitUntil: "networkidle" });
 	const body = page.locator("#cgvBody");
 	const headers = await body.locator("h2", { hasText: /Drugs approved (for|to)/i, hasNotText: /prevent/i }).all();
@@ -64,7 +66,7 @@ export async function scrapeDrugNames(page: Page, cancer: Cancer): Promise<Drug[
 	);
 
 	const scraped = await Promise.all(
-		liElements.flat().map(async (li): Promise<ScrapedDrugData | undefined> => {
+		liElements.flat().map(async (li): Promise<typeof drugs.$inferInsert | undefined> => {
 			const anchor = li.locator("a").first();
 			let [href, name] = await Promise.all([anchor.getAttribute("href"), anchor.innerText()]);
 			if (href && !uniqueHrefs.has(href)) {
@@ -79,35 +81,27 @@ export async function scrapeDrugNames(page: Page, cancer: Cancer): Promise<Drug[
 					name,
 					brandName: name.replace(/\(.*\)/, "").trim(),
 					genericName: genericName || name,
-					url: href.startsWith(baseUrls.cancerGov) ? href : `${baseUrls.cancerGov}${href}`,
+					urls: {
+						cancerGov: href.startsWith(baseUrls.cancerGov) ? href : `${baseUrls.cancerGov}${href}`,
+					},
+					cancerId: cancer.id,
 				};
 			}
 		}),
 	);
 
-	const filtered = scraped.filter((drug) => !!drug);
+	const filtered = scraped.filter((drug) => !!drug).slice(0, drugLimit > 0 ? drugLimit : Infinity);
 	console.log(`Scraped ${filtered.length} drugs for ${cancer.type}.`);
 
-	const newDrugs = await db
-		.insert(drugs)
-		.values(
-			filtered.map((drug) => ({
-				name: drug.name,
-				brandName: drug.brandName,
-				genericName: drug.genericName,
-				urls: { cancerGov: drug.url },
-				cancerId: cancer.id,
-			})),
-		)
-		.onConflictDoUpdate({
-			target: drugs.name,
-			set: {
-				urls: sql`excluded.${drugs.urls.name}`,
-				cancerId: sql`excluded.${drugs.cancerId.name}`,
-			},
-		})
-		.returning();
-	return newDrugs;
+	const result = await db.insert(drugs).values(filtered).onConflictDoNothing();
+	console.log(`Inserted ${result.rowsAffected} new drugs.`);
+
+	return db.query.drugs.findMany({
+		where: inArray(
+			drugs.name,
+			filtered.map(({ name }) => name),
+		),
+	});
 }
 
 /**
@@ -121,7 +115,7 @@ export async function scrapeDrugUrls(page: Page, drug: Drug) {
 
 	if (/FDA\s+Approved/i.test(rowTitle)) {
 		const value = await row.locator(".column2").innerText();
-		drug.fdaApproved = /Yes/i.test(value);
+		drug.fda.approved = /Yes/i.test(value);
 	}
 
 	const labelAnchor = body.locator("a", { hasText: /FDA\s+label\s+information/i });
@@ -133,7 +127,7 @@ export async function scrapeDrugUrls(page: Page, drug: Drug) {
 
 	const [updatedDrug] = await db
 		.update(drugs)
-		.set({ fdaApproved: drug.fdaApproved, urls: drug.urls })
+		.set({ fda: drug.fda, urls: drug.urls })
 		.where(eq(drugs.id, drug.id))
 		.returning();
 

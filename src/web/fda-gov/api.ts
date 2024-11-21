@@ -5,30 +5,35 @@ import type { GetDrugResponse } from "./types";
 import { eq } from "drizzle-orm";
 
 export async function getFdaInfo(drug: Drug) {
+	if (drug.fda.retrievedAt) {
+		console.log(drug.name, "using cached FDA info");
+		return drug;
+	}
+
 	const brandApprovalDate = await getApprovalDate(drug.brandName, "brand");
 	if (brandApprovalDate) {
-		drug.fdaEarliestApprovalDate = brandApprovalDate.toDate();
+		drug.fda.earliestApprovalDate = brandApprovalDate.toISOString();
 	}
 	if (!brandApprovalDate || drug.genericName !== drug.brandName) {
 		const genericApprovalDate = await getApprovalDate(drug.genericName, "generic");
 
 		if (genericApprovalDate && (!brandApprovalDate || genericApprovalDate.isBefore(brandApprovalDate))) {
-			drug.fdaEarliestApprovalDate = genericApprovalDate.toDate();
+			drug.fda.earliestApprovalDate = genericApprovalDate.toISOString();
 		}
 	}
 
-	console.log(`Fetched FDA approval info for ${drug.name}.`);
+	console.log(drug.name, "fetched FDA approval info");
 
 	const [updatedDrug] = await db
 		.update(drugs)
-		.set({ fdaEarliestApprovalDate: drug.fdaEarliestApprovalDate })
+		.set({ fda: { ...drug.fda, retrievedAt: dayjs().toISOString() } })
 		.where(eq(drugs.id, drug.id))
 		.returning();
 
 	return updatedDrug;
 }
 
-export async function getApprovalDate(drugName: string, type: "brand" | "generic") {
+async function getApprovalDate(drugName: string, type: "brand" | "generic") {
 	try {
 		drugName = drugName.toLowerCase();
 		const query = new URLSearchParams({

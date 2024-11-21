@@ -2,11 +2,16 @@ import { eq } from "drizzle-orm";
 import { baseUrls } from "../../config";
 import { db, drugs, type Drug } from "../../db";
 import { StudyStatus, type GetStudiesResponse } from "./types";
+import dayjs from "dayjs";
 
 /**
  * Query clinicaltrials.gov for the number of trials with the drug
  */
 export async function getClinicalTrials(drug: Drug) {
+	if (drug.clinicalTrials.retrievedAt) {
+		console.log(drug.name, "using cached clinical trials info");
+		return drug;
+	}
 	try {
 		let nextPageToken: string | symbol | undefined = Symbol(); // Initially set to symbol so we don't append on first request
 		while (nextPageToken) {
@@ -59,7 +64,7 @@ export async function getClinicalTrials(drug: Drug) {
 
 		const [updatedDrug] = await db
 			.update(drugs)
-			.set({ clinicalTrials: drug.clinicalTrials })
+			.set({ clinicalTrials: { ...drug.clinicalTrials, retrievedAt: dayjs().toISOString() } })
 			.where(eq(drugs.id, drug.id))
 			.returning();
 

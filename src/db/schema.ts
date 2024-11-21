@@ -15,18 +15,28 @@ export const cancersRelations = relations(cancers, ({ many }) => ({
 	drugs: many(drugs),
 }));
 
+export type DateString = string;
+
 export interface DrugUrls {
 	cancerGov: string;
 	dailyMed?: string;
 }
 
+export interface FdaData {
+	retrievedAt?: DateString;
+	approved?: boolean;
+	earliestApprovalDate?: DateString;
+}
+
 export interface DailyMedData {
+	retrievedAt?: DateString;
 	studyText?: string;
 	studyName?: string;
 	studyN?: number;
 }
 
 export interface ClinicalTrialsData {
+	retrievedAt?: DateString;
 	totalN?: number;
 	completedN?: number;
 	totalCount?: number;
@@ -48,9 +58,8 @@ export const drugs = sqliteTable("drugs", {
 	genericName: text().notNull(),
 	description: text(),
 	therapyType: text().$type<TherapyType>(),
-	fdaApproved: integer({ mode: "boolean" }).default(false),
-	fdaEarliestApprovalDate: integer({ mode: "timestamp_ms" }),
 	urls: text({ mode: "json" }).$type<DrugUrls>().notNull(),
+	fda: text({ mode: "json" }).$type<FdaData>().notNull().default({}),
 	dailyMed: text({ mode: "json" }).$type<DailyMedData>().notNull().default({}),
 	clinicalTrials: text({ mode: "json" }).$type<ClinicalTrialsData>().notNull().default({}),
 	cancerId: integer()

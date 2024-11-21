@@ -4,9 +4,10 @@ import { analyzeDailyMedStudy } from "../analyze/dailymed-study-info";
 import { analyzeTherapyType } from "../analyze/therapy-type";
 import { baseUrls } from "../config";
 import { db, type Drug, drugs, TherapyType } from "../db";
+import dayjs from "dayjs";
 
 export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
-	if (!drug.urls.dailyMed) {
+	if (!drug.urls.dailyMed || drug.dailyMed.retrievedAt) {
 		return drug;
 	}
 
@@ -42,7 +43,13 @@ export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 
 	const [updatedDrug] = await db
 		.update(drugs)
-		.set({ description: drug.description, dailyMed: drug.dailyMed })
+		.set({
+			description: drug.description,
+			dailyMed: {
+				...drug.dailyMed,
+				retrievedAt: dayjs().toISOString(),
+			},
+		})
 		.where(eq(drugs.id, drug.id))
 		.returning();
 

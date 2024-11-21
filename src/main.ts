@@ -18,43 +18,47 @@ interface Argv {
 
 async function main() {
 	const program = new Command()
-		.option("-c, --cancer <type>", "limit scraping to specific cancer type")
+		.option("-c, --cancer <type>", "limit scraping to specific cancer type", (value) => value.toLowerCase())
 		.option("-dl, --drug-limit [number]", "limit number of drugs scraped per cancer type", parseIntArg, -1)
 		.parse();
 	const args = program.opts<Argv>();
-
+	console.log("Config:", args);
 	const browser = await chromium.launch({ headless: false });
 	const context = await browser.newContext();
 
-	// Scrape cancer types
-	const page = await browser.newPage();
-	const cancers = await scrapeCancerTypes(page, args.cancer);
-	const drugs: Drug[] = [];
+	try {
+		// Scrape cancer types
+		const page = await browser.newPage();
+		const cancers = await scrapeCancerTypes(page, args.cancer);
+		const drugs: Drug[] = [];
 
-	for (const cancer of cancers) {
-		const newDrugs = await scrapeDrugNames(page, cancer);
-		const updatedDrugs = await batchPages({
-			data: args.drugLimit > 0 ? newDrugs.slice(0, args.drugLimit) : newDrugs,
-			context,
-			batchSize: 20,
-			run: async (page, drug) => {
-				drug = await scrapeDrugUrls(page, drug);
-				drug = await scrapeDailyMedInfo(page, drug);
-				drug = await analyzeDailyMedInfo(drug);
-				drug = await getFdaInfo(drug);
-				drug = await getClinicalTrials(drug);
-				console.log("Finished:", drug.name);
-				return drug;
-			},
-		});
-		drugs.push(...updatedDrugs);
+		for (const cancer of cancers) {
+			const newDrugs = await scrapeDrugNames(page, cancer, args.drugLimit);
+			const updatedDrugs = await batchPages({
+				data: newDrugs,
+				context,
+				batchSize: 20,
+				run: async (page, drug) => {
+					drug = await scrapeDrugUrls(page, drug);
+					drug = await scrapeDailyMedInfo(page, drug);
+					drug = await analyzeDailyMedInfo(drug);
+					drug = await getFdaInfo(drug);
+					drug = await getClinicalTrials(drug);
+					console.log("Finished:", drug.name);
+					return drug;
+				},
+			});
+			drugs.push(...updatedDrugs);
+		}
+
+		await writeResultsCsv(cancers, drugs);
+		console.log("Done.");
+	} catch (error) {
+		console.error(error);
+	} finally {
+		await context.close();
+		await browser.close();
 	}
-
-	await writeResultsCsv(cancers, drugs);
-	console.log("Done.");
-
-	await context.close();
-	await browser.close();
 }
 
 main().catch(console.error);
