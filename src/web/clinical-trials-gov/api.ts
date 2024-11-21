@@ -50,10 +50,10 @@ export async function getClinicalTrials(drug: Drug) {
 					statusModule.overallStatus === StudyStatus.COMPLETED ||
 					statusModule.lastKnownStatus === StudyStatus.COMPLETED
 				) {
-					trials.completedN += enrollmentInfo.count;
+					trials.completedN += enrollmentInfo?.count ?? 0;
 					trials.completedCount += 1;
 				}
-				trials.totalN += enrollmentInfo.count;
+				trials.totalN += enrollmentInfo?.count ?? 0;
 				trials.totalCount += 1;
 			}
 

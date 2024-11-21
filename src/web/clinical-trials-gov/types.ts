@@ -35,7 +35,7 @@ type DesignModule = {
 			masking: string; // Consider defining specific masking types
 		};
 	};
-	enrollmentInfo: {
+	enrollmentInfo?: {
 		count: number;
 		type: "ACTUAL" | "ESTIMATED"; // Assumes a fixed set of values
 	};

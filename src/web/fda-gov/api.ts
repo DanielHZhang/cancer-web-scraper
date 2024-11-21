@@ -35,9 +35,8 @@ export async function getFdaInfo(drug: Drug) {
 
 async function getApprovalDate(drugName: string, type: "brand" | "generic") {
 	try {
-		drugName = drugName.toLowerCase();
 		const query = new URLSearchParams({
-			search: `openfda.${type}_name:"${drugName}"`, // Quotes ensures an exact match
+			search: `openfda.${type}_name:"${drugName.toLowerCase()}"`, // Quotes ensures an exact match
 			limit: "50",
 		});
 		const response = await fetch(`${baseUrls.fdaDrugsApi}?${query.toString()}`);
@@ -70,9 +69,9 @@ async function getApprovalDate(drugName: string, type: "brand" | "generic") {
 	} catch (error) {
 		if (error instanceof Response) {
 			if (error.status === 404) {
-				console.warn(`api.fda.gov could not find ${drugName}.`);
+				console.warn(drugName, `unable to find drug on api.fda.gov`);
 			} else {
-				console.error("api.fda.gov API request failed:", error);
+				console.error(drugName, `api.fda.gov API request failed: ${error.status} ${error.statusText}`);
 			}
 		} else {
 			console.error(error);
