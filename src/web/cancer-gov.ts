@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { eq, inArray, like, sql } from "drizzle-orm";
 import { baseUrls } from "../config";
 import { cancers, db, drugs, type Cancer, type Drug } from "../db";
@@ -53,21 +53,42 @@ export async function scrapeCancerTypes(page: Page, cancerLimit?: string): Promi
 export async function scrapeDrugNames(page: Page, cancer: Cancer, drugLimit: number): Promise<Drug[]> {
 	await page.goto(cancer.urls.cancerGov, { waitUntil: "networkidle" });
 	const body = page.locator("#cgvBody");
-	const headers = await body.locator("h2", { hasText: /Drugs approved (for|to)/i, hasNotText: /prevent/i }).all();
+	const desiredTitleRegex = /Drugs approved (for|to)/i;
+	const undesiredTitleRegex = /prevent/i;
+	const headers = await body.locator("h2", { hasText: desiredTitleRegex, hasNotText: undesiredTitleRegex }).all();
 	const uniqueHrefs = new Set<string>();
 
-	const liElements = await Promise.all(
+	const drugAnchorElements = await Promise.all(
 		headers.map(async (header) => {
 			const headerParent = header.locator("..");
 			const ul = headerParent.locator("ul.no-bullets.no-description");
 			const liElements = await ul.locator("li").all();
-			return liElements;
+			const anchors: Locator[] = [];
+
+			for (const li of liElements) {
+				const anchor = li.locator("a").first();
+				const anchorCount = await anchor.count();
+				if (anchorCount > 0) {
+					anchors.push(anchor);
+				}
+				// Some ul lists will contain multiple titles denoting different drug sections
+				// We only want the li's with the appropriate title, skip the li's within the ul under the wrong title
+				const innerH2 = anchor.locator("h2").first();
+				const innerH2Count = await innerH2.count();
+				if (innerH2Count > 0) {
+					const title = await innerH2.innerText();
+					if (!desiredTitleRegex.test(title) || undesiredTitleRegex.test(title)) {
+						break;
+					}
+				}
+			}
+
+			return anchors;
 		}),
 	);
 
 	const scraped = await Promise.all(
-		liElements.flat().map(async (li): Promise<typeof drugs.$inferInsert | undefined> => {
-			const anchor = li.locator("a").first();
+		drugAnchorElements.flat().map(async (anchor): Promise<typeof drugs.$inferInsert | undefined> => {
 			let [href, name] = await Promise.all([anchor.getAttribute("href"), anchor.innerText()]);
 			if (href && !uniqueHrefs.has(href)) {
 				uniqueHrefs.add(href); // Prevent duplicates from being included (same drug but different brand name)
@@ -116,19 +137,27 @@ export async function scrapeDrugUrls(page: Page, drug: Drug) {
 	await page.goto(drug.urls.cancerGov, { waitUntil: "networkidle" });
 	const body = page.locator("#cgvBody");
 	const row = body.locator(".two-columns.brand-fda").last();
-	const rowTitle = await row.locator(".column1").innerText();
 
-	if (/FDA\s+Approved/i.test(rowTitle)) {
-		const value = await row.locator(".column2").innerText();
-		drug.fda.approved = /Yes/i.test(value);
+	try {
+		const rowTitle = await row.locator(".column1").innerText({ timeout: 1000 });
+		if (/FDA\s+Approved/i.test(rowTitle)) {
+			const value = await row.locator(".column2").innerText();
+			drug.fda.approved = /Yes/i.test(value);
+		}
+	} catch (error) {
+		console.warn(drug.name, "missing FDA approval column");
 	}
 
-	const labelAnchor = body.locator("a", { hasText: /FDA\s+label\s+information/i });
-	let dailyMedUrl = await labelAnchor.getAttribute("href");
-	if (dailyMedUrl && dailyMedUrl.startsWith(baseUrls.dailyMed)) {
-		drug.urls.dailyMed = dailyMedUrl;
-	} else {
-		console.warn(drug.name, "label information url is not to dailymed:", dailyMedUrl);
+	try {
+		const labelAnchor = body.locator("a", { hasText: /FDA\s+label\s+information/i });
+		let dailyMedUrl = await labelAnchor.getAttribute("href", { timeout: 1000 });
+		if (dailyMedUrl && dailyMedUrl.startsWith(baseUrls.dailyMed)) {
+			drug.urls.dailyMed = dailyMedUrl;
+		} else {
+			console.warn(drug.name, "label information url is not to dailymed:", dailyMedUrl);
+		}
+	} catch (error) {
+		console.warn(drug.name, "missing DailyMed url link");
 	}
 
 	const [updatedDrug] = await db
