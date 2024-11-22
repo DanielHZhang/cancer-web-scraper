@@ -77,11 +77,10 @@ export async function analyzeDailyMedInfo(drug: Drug) {
 			drug.dailyMed.studyText ? retryRateLimit(() => analyzeDailyMedStudy(drug)) : undefined,
 		]);
 
-		drug.therapyType = therapyResult?.therapyType ?? TherapyType.Unknown;
 		if (therapyResult) {
+			drug.therapyType = therapyResult.therapyType;
 			drug.gptReasoning.therapyType = therapyResult.reasoning;
 		}
-
 		if (studyInfoResult) {
 			drug.dailyMed.studyName = studyInfoResult.studyName;
 			drug.dailyMed.studyN = studyInfoResult.studyNumParticipants;
