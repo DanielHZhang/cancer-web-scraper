@@ -58,19 +58,32 @@ export async function scrapeDrugNames(page: Page, cancer: Cancer, drugLimit: num
 	const headers = await body.locator("h2", { hasText: desiredTitleRegex, hasNotText: undesiredTitleRegex }).all();
 	const uniqueHrefs = new Set<string>();
 
-	const drugAnchorElements = await Promise.all(
+	const drugNameData = await Promise.all(
 		headers.map(async (header) => {
 			const headerParent = header.locator("..");
 			const ul = headerParent.locator("ul.no-bullets.no-description");
 			const liElements = await ul.locator("li").all();
-			const anchors: Locator[] = [];
+			const data: { href: string; name: string }[] = [];
 
 			for (const li of liElements) {
 				const anchor = li.locator("a").first();
 				const anchorCount = await anchor.count();
 				if (anchorCount > 0) {
-					anchors.push(anchor);
+					const href = await anchor.getAttribute("href");
+					if (href && !uniqueHrefs.has(href)) {
+						uniqueHrefs.add(href); // Prevent duplicates from being included
+
+						let name: string;
+						if (anchorCount > 1) {
+							name = await li.innerText(); // Some li's might contain multiple anchor tags, with the name split across them
+						} else {
+							name = await anchor.innerText();
+						}
+
+						data.push({ name, href });
+					}
 				}
+
 				// Some ul lists will contain multiple titles denoting different drug sections
 				// We only want the li's with the appropriate title, skip the li's within the ul under the wrong title
 				const innerH2 = anchor.locator("h2").first();
@@ -83,49 +96,43 @@ export async function scrapeDrugNames(page: Page, cancer: Cancer, drugLimit: num
 				}
 			}
 
-			return anchors;
+			return data;
 		}),
 	);
 
 	const scraped = await Promise.all(
-		drugAnchorElements.flat().map(async (anchor): Promise<typeof drugs.$inferInsert | undefined> => {
-			let [href, name] = await Promise.all([anchor.getAttribute("href"), anchor.innerText()]);
-			if (href && !uniqueHrefs.has(href)) {
-				uniqueHrefs.add(href); // Prevent duplicates from being included (same drug but different brand name)
-				name = name.split("\n")[0].trim(); // Some names may be split into multiple lines
-				const genericName = name
-					.match(/\(.+\)/)?.[0]
-					.slice(1, -1) // Do not include the parantheses in the result
-					.trim();
+		drugNameData.flat().map(async ({ name, href }): Promise<typeof drugs.$inferInsert> => {
+			const cleanName = name.split("\n")[0].trim();
+			const genericNameMatch = cleanName.match(/\(.+\)/);
+			const genericName = genericNameMatch ? genericNameMatch[0].slice(1, -1).trim() : undefined;
 
-				return {
-					name,
-					brandName: name.replace(/\(.*\)/, "").trim(),
-					genericName: genericName || name,
-					urls: {
-						cancerGov: href.startsWith(baseUrls.cancerGov) ? href : `${baseUrls.cancerGov}${href}`,
-					},
-					cancerId: cancer.id,
-				};
-			}
+			return {
+				name: cleanName,
+				brandName: cleanName.replace(/\(.*\)/, "").trim(),
+				genericName: genericName || cleanName,
+				urls: {
+					cancerGov: href.startsWith(baseUrls.cancerGov) ? href : `${baseUrls.cancerGov}${href}`,
+				},
+				cancerId: cancer.id,
+			};
 		}),
 	);
 
-	const filtered = scraped.filter((drug) => !!drug).slice(0, drugLimit > 0 ? drugLimit : Infinity);
-	console.log(`Scraped ${filtered.length} drug(s) for cancer: ${cancer.type}.`);
+	const insertData = scraped.slice(0, drugLimit > 0 ? drugLimit : Infinity);
+	console.log(`Scraped ${insertData.length} drug(s) for cancer: ${cancer.type}.`);
 
-	if (filtered.length === 0) {
-		console.warn(`No drugs returned after filtering.`);
+	if (insertData.length === 0) {
+		console.warn(`No drugs returned from scraping.`);
 		return [];
 	}
 
-	const result = await db.insert(drugs).values(filtered).onConflictDoNothing();
+	const result = await db.insert(drugs).values(insertData).onConflictDoNothing();
 	console.log(`Inserted ${result.rowsAffected} new drug(s).`);
 
 	return db.query.drugs.findMany({
 		where: inArray(
 			drugs.name,
-			filtered.map(({ name }) => name),
+			insertData.map(({ name }) => name),
 		),
 	});
 }

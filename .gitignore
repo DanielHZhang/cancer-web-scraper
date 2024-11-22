@@ -6,3 +6,4 @@ node_modules/
 /.output/
 /.cache/*.sqlite
 .env
+.DS_Store
