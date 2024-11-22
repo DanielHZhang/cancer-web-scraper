@@ -11,14 +11,15 @@ export async function batchPages<T, U>({ context, batchSize, data, run }: Params
 	const total = data.length;
 	const results: U[] = [];
 	while (currentIndex < total) {
-		await Promise.all(
+		const batchResults = await Promise.all(
 			data.slice(currentIndex, currentIndex + batchSize).map(async (item) => {
 				const page = await context.newPage();
 				const result = await run(page, item);
-				results.push(result);
 				await page.close();
+				return result;
 			}),
 		);
+		results.push(...batchResults);
 		currentIndex += batchSize;
 	}
 	return results;
