@@ -21,13 +21,17 @@ export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 
 	// Links to search page rather than directly to drug. Pick the first result.
 	if (drug.urls.dailyMed.includes("/search.cfm?")) {
-		const titleAnchor = page.locator(".drug-info-link").first();
-		const resultUrl = await titleAnchor.getAttribute("href");
-		if (!resultUrl) {
+		try {
+			const titleAnchor = page.locator(".drug-info-link").first();
+			const resultUrl = await titleAnchor.getAttribute("href");
+			if (!resultUrl) {
+				throw new Error("No results.");
+			}
+			await page.goto(`${baseUrls.dailyMed}${resultUrl}`, { waitUntil: "networkidle" });
+		} catch (error) {
 			console.warn(drug.name, "has no search results on dailymed:", drug.urls.dailyMed);
 			return drug;
 		}
-		await page.goto(`${baseUrls.dailyMed}${resultUrl}`, { waitUntil: "networkidle" });
 	}
 
 	const [description, studyText] = await Promise.all([
