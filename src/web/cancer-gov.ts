@@ -93,6 +93,11 @@ export async function scrapeDrugNames(page: Page, cancer: Cancer, drugLimit: num
 	const filtered = scraped.filter((drug) => !!drug).slice(0, drugLimit > 0 ? drugLimit : Infinity);
 	console.log(`Scraped ${filtered.length} drug(s) for cancer: ${cancer.type}.`);
 
+	if (filtered.length === 0) {
+		console.warn(`No drugs returned after filtering.`);
+		return [];
+	}
+
 	const result = await db.insert(drugs).values(filtered).onConflictDoNothing();
 	console.log(`Inserted ${result.rowsAffected} new drug(s).`);
 

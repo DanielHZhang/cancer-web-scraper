@@ -5,6 +5,7 @@ import { analyzeTherapyType } from "../analyze/therapy-type";
 import { baseUrls } from "../config";
 import { db, type Drug, drugs, TherapyType } from "../db";
 import dayjs from "dayjs";
+import { retryRateLimit } from "../analyze/openai";
 
 export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 	if (!drug.urls.dailyMed) {
@@ -62,17 +63,21 @@ export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 }
 
 export async function analyzeDailyMedInfo(drug: Drug) {
+	if (!drug.description && !drug.dailyMed.studyText) {
+		console.warn(drug.name, "skipping analysis due to missing DailyMed info");
+		return drug;
+	}
 	if (drug.therapyType || drug.dailyMed.studyName || drug.dailyMed.studyN) {
 		console.log(drug.name, "using cached GPT analysis");
 		return drug;
 	}
 	try {
 		const [therapyResult, studyInfoResult] = await Promise.all([
-			drug.description ? analyzeTherapyType(drug) : undefined,
-			drug.dailyMed?.studyText ? analyzeDailyMedStudy(drug) : undefined,
+			drug.description ? retryRateLimit(() => analyzeTherapyType(drug)) : undefined,
+			drug.dailyMed.studyText ? retryRateLimit(() => analyzeDailyMedStudy(drug)) : undefined,
 		]);
 
-		drug.therapyType = therapyResult?.therapyType ?? TherapyType.Unknown; // Populate so that GPT is not requeried
+		drug.therapyType = therapyResult?.therapyType ?? TherapyType.Unknown;
 		if (therapyResult) {
 			drug.gptReasoning.therapyType = therapyResult.reasoning;
 		}
