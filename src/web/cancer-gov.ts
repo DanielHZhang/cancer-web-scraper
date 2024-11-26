@@ -102,9 +102,9 @@ export async function scrapeDrugNames(page: Page, cancer: Cancer, drugLimit: num
 
 	const scraped = await Promise.all(
 		drugNameData.flat().map(async ({ name, href }): Promise<typeof drugs.$inferInsert> => {
-			const cleanName = name.split("\n")[0].trim();
-			const genericNameMatch = cleanName.match(/\(.+\)/);
-			const genericName = genericNameMatch ? genericNameMatch[0].slice(1, -1).trim() : undefined;
+			const cleanName = name.replace(/\s+/g, " ");
+			const genericNameMatch = cleanName.match(/(?:\()(.+)(?:\))/);
+			const genericName = genericNameMatch?.at(1) ? genericNameMatch[1].trim() : undefined;
 
 			return {
 				name: cleanName,

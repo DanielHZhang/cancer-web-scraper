@@ -7,7 +7,7 @@ import { db, type Drug, drugs, TherapyType } from "../db";
 import dayjs from "dayjs";
 import { retryRateLimit } from "../analyze/openai";
 
-export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
+export async function scrapeDailyMedInfo(page: Page, drug: Drug): Promise<Drug> {
 	if (!drug.urls.dailyMed) {
 		console.log(drug.name, "missing DailyMed url, skipping scrape");
 		return drug;
@@ -19,21 +19,37 @@ export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 
 	await page.goto(drug.urls.dailyMed, { waitUntil: "networkidle" });
 
-	// Links to search page rather than directly to drug. Pick the first result.
+	// Links to search page rather than directly to drug
 	if (drug.urls.dailyMed.includes("/search.cfm?")) {
 		try {
-			const titleAnchor = page.locator(".drug-info-link").first();
-			const resultUrl = await titleAnchor.getAttribute("href");
-			if (!resultUrl) {
-				throw new Error("No results.");
+			const resultAnchors = await page.locator(".results").locator(".drug-info-link").all();
+			const resultUrls = await Promise.all(resultAnchors.map((anchor) => anchor.getAttribute("href")));
+
+			for (const url of resultUrls) {
+				if (!url) {
+					continue;
+				}
+				await page.goto(`${baseUrls.dailyMed}${url}`, { waitUntil: "networkidle" });
+				const updated = await scrape(page, drug);
+				if (updated) {
+					return updated;
+				}
 			}
-			await page.goto(`${baseUrls.dailyMed}${resultUrl}`, { waitUntil: "networkidle" });
+
+			throw new Error("Failed to find info on first page of search results");
 		} catch (error) {
 			console.warn(drug.name, "has no search results on dailymed:", drug.urls.dailyMed);
 			return drug;
 		}
 	}
+	// Links directly to drug page
+	else {
+		const updated = await scrape(page, drug);
+		return updated || drug;
+	}
+}
 
+async function scrape(page: Page, drug: Drug) {
 	const [description, studyText] = await Promise.all([
 		getDrugDescription(page).catch(() => console.warn(drug.name, "missing description section")),
 		getClinicalStudyText(page).catch(() => console.warn(drug.name, "missing clinical studies section")),
@@ -48,7 +64,7 @@ export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 	}
 	if (!description && !studyText) {
 		console.warn(drug.name, "no info could be scraped from DailyMed");
-		return drug; // No new info was scraped
+		return;
 	}
 
 	const [updatedDrug] = await db
@@ -64,6 +80,32 @@ export async function scrapeDailyMedInfo(page: Page, drug: Drug) {
 		.returning();
 
 	return updatedDrug;
+}
+
+/**
+ * Get drug description from DailyMed.
+ */
+async function getDrugDescription(page: Page) {
+	const descriptionSection = page
+		.locator(".drug-label-sections")
+		.locator("a", { hasText: /11\s+DESCRIPTION/i })
+		.locator("..")
+		.locator(".Section.toggle-content");
+	const description = await descriptionSection.innerText({ timeout: 500 });
+	return description;
+}
+
+/**
+ * Get clinical studies info from DailyMed.
+ */
+async function getClinicalStudyText(page: Page) {
+	const preview = page
+		.locator(".drug-label-sections")
+		.locator("a", { hasText: /14\s+CLINICAL\s+STUDIES/i })
+		.locator("..")
+		.locator(".Section.toggle-content.closed.long-content");
+	const previewText = await preview.innerText({ timeout: 500 });
+	return previewText;
 }
 
 export async function analyzeDailyMedInfo(drug: Drug) {
@@ -105,30 +147,4 @@ export async function analyzeDailyMedInfo(drug: Drug) {
 		console.error(drug.name, "ERROR analyzing daily med info:", error);
 		return drug;
 	}
-}
-
-/**
- * Get drug description from DailyMed.
- */
-export async function getDrugDescription(page: Page) {
-	const descriptionSection = page
-		.locator(".drug-label-sections")
-		.locator("a", { hasText: /11\s+DESCRIPTION/i })
-		.locator("..")
-		.locator(".Section.toggle-content");
-	const description = await descriptionSection.innerText({ timeout: 2000 });
-	return description;
-}
-
-/**
- * Get clinical studies info from DailyMed.
- */
-export async function getClinicalStudyText(page: Page) {
-	const preview = page
-		.locator(".drug-label-sections")
-		.locator("a", { hasText: /14\s+CLINICAL\s+STUDIES/i })
-		.locator("..")
-		.locator(".Section.toggle-content.closed.long-content");
-	const previewText = await preview.innerText({ timeout: 2000 });
-	return previewText;
 }

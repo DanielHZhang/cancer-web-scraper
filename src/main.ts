@@ -63,6 +63,7 @@ async function main() {
 	} catch (error) {
 		console.error(error);
 	} finally {
+		db.$client.close();
 		await context.close();
 		await browser.close();
 	}
